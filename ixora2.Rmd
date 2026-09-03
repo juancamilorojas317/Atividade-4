@@ -1,0 +1,156 @@
+---
+title: "Ixora Coccinea"
+author: "Juan Camilo Rojas"
+date: "2026-09-03"
+output: html_document
+---
+
+## Ixora Coccinea
+
+Se selecciona una especie de interes, la cual fue *Ixora coccinea*. Para observar sus ocurrencias a nivel global se necesita de una base de datos abierta, por esto. se utiliza Gbif, se observa si se encuentra la especie (figura1).
+
+![](images/Captura%20de%20tela%202026-09-03%20143502-01.jpg){#Figura 1. Interfase de GBIF para Ixora coccinea}
+
+Para llevar a cabo el estudio de ocurrencias se utiliza el software de R studio, y se descargan los siguientes paquetes
+
+```{r cargar-librerias, message=FALSE, warning=FALSE}
+# Cargar librerias
+library(tidyverse)
+library(rgbif)
+library(ggmap)
+library(maps)
+library(mapdata)
+library(bdc)
+library(CoordinateCleaner)
+ixo <- occ_data(scientificName = "ixora coccinea")
+```
+
+Se trabajara a partir del paquete "rgbif" para obtener la matriz de ocurrencia, donde se especificara el nombre de la especie. Para Ixora coccinea la matriz tiene la siguiente estructura se observan las variables con las que cuenta la base de datos
+
+```{r echo=FALSE}
+ixo$data %>% names
+```
+
+Se Verifican los problemas reportados y donde se encuentran estos problemas.
+
+```{r echo=FALSE, warning=FALSE}
+gbif_issues() 
+```
+
+```{r echo=FALSE}
+issues_gbif <- ixo$data$issues %>% 
+  # unique() %>% 
+  strsplit(., "[,]") %>% 
+  unlist() %>% 
+  unique()
+```
+
+```{r echo=FALSE}
+gbif_issues() %>%
+  data.frame() %>% 
+  filter(code %in% issues_gbif)
+```
+
+Se seleccionan los campos de interes
+
+```{r}
+ixo1 <- ixo$data %>%
+  dplyr::select(any_of(c(
+    "scientificName", "acceptedScientificName", "decimalLatitude", "decimalLongitude",
+    "issues", "country", "basisOfRecord", "occurrenceStatus",
+    "datasetName", "recordedBy", "depth", "locality", "habitat")))
+```
+
+Se verifican las ocurrencias unicas
+
+```{r}
+ixo1 <- ixo1 %>% 
+  distinct() 
+```
+
+Se revisan los niveles de los factores
+
+```{r}
+lapply(ixo1, unique)
+```
+
+Se revisan las coordenadas y se eliminan los NAS, se da un limite a la variable.
+
+```{r warning=FALSE}
+# checar coordenadas válidas
+check_pf <- 
+  bdc::bdc_coordinates_outOfRange(
+    data = ixo1,
+    lat = "decimalLatitude",
+    lon = "decimalLongitude")
+
+# Eliminar filas con NA o coordenadas fuera de rango
+ixo1_valido <- ixo1 %>%
+  filter(
+    !is.na(decimalLatitude),
+    !is.na(decimalLongitude),
+    decimalLatitude >= -90 & decimalLatitude <= 90,
+    decimalLongitude >= -180 & decimalLongitude <= 180)
+```
+
+Se realiza un filtro sobre los datos de las coordenadas para tener solo datos validos.
+
+```{r}
+cl <- ixo1_valido %>%
+  CoordinateCleaner::clean_coordinates(
+    species = "acceptedScientificName",
+    lat = "decimalLatitude",
+    lon = "decimalLongitude",
+    tests = c("capitals", "centroids", "equal", "gbif", "institutions", "zeros")
+  )
+
+```
+
+Se observa la distribución de Ixora coccinea por medio de un mapa mundial.
+
+```{r}
+ggplot() +
+  borders("world", fill = "lightgray") +
+  geom_point(data = cl, aes(x = decimalLongitude, y = decimalLatitude, color = `.cap`)) +
+  coord_quickmap() +
+  theme_classic()
+```
+
+Se observa todos los paises donde tiene ocurrencia
+
+```{r}
+ixo1 %>% 
+  distinct(country) %>% 
+  pull()
+```
+
+Se hace un plot para ver las ocurrencias en los distintos paises
+
+```{r}
+# Country
+ixo1 %>%
+  group_by(country) %>% 
+  summarise(occ = length(scientificName)) %>% 
+  ggplot(aes(occ, y=country)) +
+  geom_bar(stat = 'identity')
+```
+
+
+Debido al ruido que genera la imagen se hace una selección de su ocurrencia en sudamerica
+
+```{r}
+ixo1 %>%
+  filter(country %in% c("Colombia", "Peru", "Brazil", "Suriname", 
+                        "French Guiana", "Ecuador", "Guyana", 
+                        "Venezuela (Bolivarian Republic of)", 
+                        "Paraguay", "Argentina")) %>%
+  group_by(country) %>% 
+  summarise(occ = length(scientificName)) %>% 
+  ggplot(aes(x = occ, y = country)) +
+  geom_bar(stat = 'identity')
+```
+```{r}
+```
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
